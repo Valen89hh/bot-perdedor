@@ -2,8 +2,10 @@ venv/
 __pycache__/
 *.pyc
 models/
-data/
 logs/
 results/
 .env
-*.zip
+data/XAU_1m_data.csv
+data/XAU_5m_data.csv
+data/XAU_15m_data.csv
+data/XAU_30m_data.csv

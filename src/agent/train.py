@@ -34,48 +34,15 @@ def make_env(df_features, df_prices, config):
     return _init
 
 
-def train(config=None):
-    """Entrena el agente RL."""
-    if config is None:
-        config = CONFIG
-
-    print("=" * 60)
-    print("  RL Trading Bot - Entrenamiento")
-    print("=" * 60)
-
-    # Cargar datos
-    print("\n[1/5] Cargando datos...")
-    df = load_data(config["data_path"])
-    train_df, val_df, _ = split_data(df, config["train_ratio"], config["val_ratio"])
-
-    # Features
-    print("[2/5] Calculando features...")
-    train_feat = compute_features(train_df)
-    train_feat_norm, scaler = normalize_features(
-        train_feat,
-        save_path=os.path.join(config["models_dir"], "scaler.pkl"),
-    )
-    train_prices = train_df.loc[train_feat_norm.index]
-
-    val_feat = compute_features(val_df)
-    val_feat_norm, _ = normalize_features(val_feat, scaler=scaler)
-    val_prices = val_df.loc[val_feat_norm.index]
-
-    print(f"    Train: {len(train_feat_norm)} steps | Val: {len(val_feat_norm)} steps")
-
-    # Environments
-    print("[3/5] Creando environments...")
-    train_env = DummyVecEnv([make_env(train_feat_norm, train_prices, config)])
-    eval_env = DummyVecEnv([make_env(val_feat_norm, val_prices, config)])
-
-    # Modelo
-    print("[4/5] Inicializando modelo...")
+def create_model(config, train_env):
+    """Crea un modelo nuevo desde cero."""
     algo_class = ALGORITHMS[config["algorithm"]]
     algo_kwargs = {
         "policy": config["policy"],
         "env": train_env,
         "learning_rate": config["learning_rate"],
         "gamma": config["gamma"],
+        "device": config.get("device", "auto"),
         "verbose": 1,
         "tensorboard_log": config["logs_dir"],
         "policy_kwargs": config["policy_kwargs"],
@@ -96,9 +63,11 @@ def train(config=None):
             "ent_coef": config["ent_coef"],
         })
 
-    model = algo_class(**algo_kwargs)
+    return algo_class(**algo_kwargs)
 
-    # Callbacks
+
+def create_callbacks(config, eval_env):
+    """Crea callbacks para entrenamiento."""
     os.makedirs(config["models_dir"], exist_ok=True)
     os.makedirs(config["logs_dir"], exist_ok=True)
 
@@ -118,10 +87,47 @@ def train(config=None):
     )
     trading_callback = TradingMetricsCallback(verbose=1)
 
-    callbacks = CallbackList([eval_callback, checkpoint_callback, trading_callback])
+    return CallbackList([eval_callback, checkpoint_callback, trading_callback])
 
-    # Entrenar
-    print(f"[5/5] Entrenando {config['algorithm']} por {config['total_timesteps']:,} timesteps...")
+
+def train(config=None):
+    """Entrena el agente RL en una sola pasada sobre todo el dataset de train."""
+    if config is None:
+        config = CONFIG
+
+    print("=" * 60)
+    print("  RL Trading Bot - Entrenamiento (Solo Longs)")
+    print("=" * 60)
+
+    # Cargar datos
+    print("\n[1/5] Cargando datos...")
+    df = load_data(config["data_path"])
+    train_df, val_df, _ = split_data(df, config["train_ratio"], config["val_ratio"])
+
+    # Features
+    print("[2/5] Calculando features...")
+    train_feat = compute_features(train_df)
+    train_feat_norm, scaler = normalize_features(
+        train_feat,
+        save_path=os.path.join(config["models_dir"], "scaler.pkl"),
+    )
+    train_prices = train_df.loc[train_feat_norm.index]
+
+    val_feat = compute_features(val_df)
+    val_feat_norm, _ = normalize_features(val_feat, scaler=scaler)
+    val_prices = val_df.loc[val_feat_norm.index]
+
+    # Crear environments
+    n_envs = config.get("n_envs", 4)
+    print(f"[3/5] Creando environments (train: {len(train_feat_norm)} steps, {n_envs} envs paralelos)...")
+    train_env = DummyVecEnv([make_env(train_feat_norm, train_prices, config) for _ in range(n_envs)])
+    eval_env = DummyVecEnv([make_env(val_feat_norm, val_prices, config)])
+
+    # Crear modelo y entrenar
+    model = create_model(config, train_env)
+    callbacks = create_callbacks(config, eval_env)
+
+    print(f"\n[4/5] Entrenando {config['total_timesteps']:,} steps...")
     print("-" * 60)
     model.learn(
         total_timesteps=config["total_timesteps"],
@@ -130,9 +136,13 @@ def train(config=None):
     )
 
     # Guardar modelo final
+    print("\n[5/5] Guardando modelo...")
     model_path = os.path.join(config["models_dir"], "final_model")
     model.save(model_path)
-    print(f"\nModelo guardado en: {model_path}")
+    print(f"    Modelo guardado en: {model_path}")
+
+    print("\nEntrenamiento completado.")
+    print("=" * 60)
 
     return model
 

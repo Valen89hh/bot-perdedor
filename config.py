@@ -25,14 +25,16 @@ CONFIG = {
     "gamma": 0.99,
     "gae_lambda": 0.95,
     "clip_range": 0.2,
-    "ent_coef": 0.01,
-    "total_timesteps": 500_000,
+    "ent_coef": 0.02,
+    "total_timesteps": 2_000_000,
     "eval_freq": 10_000,
     "save_freq": 50_000,
 
     # --- Network ---
+    "device": "cpu",
+    "n_envs": 4,
     "policy_kwargs": {
-        "net_arch": [256, 256, 128],
+        "net_arch": [128, 64],
     },
 
     # --- Paths ---

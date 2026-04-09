@@ -44,18 +44,19 @@ def evaluate(config=None, model_path=None, dataset="test"):
 
     eval_feat = compute_features(eval_df)
     eval_feat_norm, _ = normalize_features(eval_feat, scaler=scaler)
+    
     eval_prices = eval_df.loc[eval_feat_norm.index]
 
     # Cargar modelo
     print("[3/4] Cargando modelo...")
     if model_path is None:
-        # Intentar best_model primero, luego final_model
+        # Intentar final_model primero, luego best_model
+        final_path = os.path.join(config["models_dir"], "best_model.zip")
         best_path = os.path.join(config["models_dir"], "best_model.zip")
-        final_path = os.path.join(config["models_dir"], "final_model.zip")
-        if os.path.exists(best_path):
-            model_path = best_path
-        else:
+        if os.path.exists(final_path):
             model_path = final_path
+        else:
+            model_path = best_path
 
     algo_class = ALGORITHMS[config["algorithm"]]
     model = algo_class.load(model_path)
