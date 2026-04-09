@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RL Trading Bot - XAU/USD</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0a0e17;
+            color: #e0e0e0;
+        }
+        .header {
+            background: #111827;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #1f2937;
+        }
+        .header h1 {
+            font-size: 20px;
+            color: #f9fafb;
+        }
+        .header h1 span { color: #fbbf24; }
+        .controls {
+            display: flex;
+            gap: 8px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            background: #1f2937;
+            color: #d1d5db;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: #374151; }
+        .btn.active {
+            background: #fbbf24;
+            color: #111827;
+            border-color: #fbbf24;
+            font-weight: 600;
+        }
+        .container { padding: 16px 24px; }
+        .chart-container {
+            background: #111827;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            border: 1px solid #1f2937;
+        }
+        .chart-title {
+            font-size: 14px;
+            color: #9ca3af;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .metric-card {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        .metric-label {
+            font-size: 11px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+        }
+        .positive { color: #34d399; }
+        .negative { color: #f87171; }
+        .neutral { color: #fbbf24; }
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #6b7280;
+        }
+        .error-msg {
+            text-align: center;
+            padding: 40px;
+            color: #f87171;
+            background: #1f2937;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>RL Trading Bot &mdash; <span>Gold XAU/USD 1H</span></h1>
+        <div class="controls" id="dataset-buttons"></div>
+    </div>
+
+    <div class="container">
+        <div class="metrics-grid" id="metrics-grid">
+            <div class="loading">Cargando metricas...</div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">Candlestick Chart + Trade Signals</div>
+            <div id="candlestick-chart" style="height: 500px;">
+                <div class="loading">Cargando grafico...</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">Equity Curve</div>
+            <div id="equity-chart" style="height: 250px;">
+                <div class="loading">Cargando equity...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentDataset = 'test';
+
+        async function fetchJSON(url) {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        }
+
+        async function loadDatasets() {
+            try {
+                const datasets = await fetchJSON('/api/datasets');
+                const container = document.getElementById('dataset-buttons');
+                container.innerHTML = '';
+                datasets.forEach(ds => {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn' + (ds === currentDataset ? ' active' : '');
+                    btn.textContent = ds.charAt(0).toUpperCase() + ds.slice(1);
+                    btn.onclick = () => { currentDataset = ds; loadAll(); };
+                    container.appendChild(btn);
+                });
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadMetrics() {
+            try {
+                const data = await fetchJSON(`/api/metrics/${currentDataset}`);
+                const m = data.metrics;
+                const grid = document.getElementById('metrics-grid');
+                grid.innerHTML = `
+                    <div class="metric-card">
+                        <div class="metric-label">Total Return</div>
+                        <div class="metric-value ${m.total_return_pct >= 0 ? 'positive' : 'negative'}">${m.total_return_pct.toFixed(1)}%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Buy & Hold</div>
+                        <div class="metric-value ${data.buy_hold_return_pct >= 0 ? 'positive' : 'negative'}">${data.buy_hold_return_pct.toFixed(1)}%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Win Rate</div>
+                        <div class="metric-value neutral">${m.win_rate_pct.toFixed(1)}%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Profit Factor</div>
+                        <div class="metric-value neutral">${m.profit_factor.toFixed(2)}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Sharpe Ratio</div>
+                        <div class="metric-value ${m.sharpe_ratio >= 0 ? 'positive' : 'negative'}">${m.sharpe_ratio.toFixed(2)}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Max Drawdown</div>
+                        <div class="metric-value negative">${m.max_drawdown_pct.toFixed(1)}%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Total Trades</div>
+                        <div class="metric-value neutral">${m.total_trades}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Final Balance</div>
+                        <div class="metric-value ${m.final_balance >= 10000 ? 'positive' : 'negative'}">$${m.final_balance.toLocaleString()}</div>
+                    </div>
+                `;
+            } catch(e) {
+                document.getElementById('metrics-grid').innerHTML = '<div class="error-msg">No hay resultados. Ejecuta evaluate primero.</div>';
+            }
+        }
+
+        async function loadCandlestick() {
+            try {
+                const [candles, trades] = await Promise.all([
+                    fetchJSON(`/api/candles/${currentDataset}`),
+                    fetchJSON(`/api/trades/${currentDataset}`)
+                ]);
+
+                const candleTrace = {
+                    x: candles.datetime,
+                    open: candles.open,
+                    high: candles.high,
+                    low: candles.low,
+                    close: candles.close,
+                    type: 'candlestick',
+                    name: 'XAU/USD',
+                    increasing: { line: { color: '#34d399' } },
+                    decreasing: { line: { color: '#f87171' } },
+                };
+
+                // Buy markers
+                const buys = trades.filter(t => t.type.includes('open_long') || t.type.includes('close_short'));
+                const buyTrace = {
+                    x: buys.map(t => t.timestamp),
+                    y: buys.map(t => t.price),
+                    mode: 'markers',
+                    type: 'scatter',
+                    name: 'BUY',
+                    marker: {
+                        symbol: 'triangle-up',
+                        size: 10,
+                        color: '#34d399',
+                        line: { color: '#065f46', width: 1 }
+                    },
+                    hovertemplate: 'BUY @ %{y:.2f}<br>%{x}<extra></extra>',
+                };
+
+                // Sell markers
+                const sells = trades.filter(t => t.type.includes('open_short') || t.type.includes('close_long'));
+                const sellTrace = {
+                    x: sells.map(t => t.timestamp),
+                    y: sells.map(t => t.price),
+                    mode: 'markers',
+                    type: 'scatter',
+                    name: 'SELL',
+                    marker: {
+                        symbol: 'triangle-down',
+                        size: 10,
+                        color: '#f87171',
+                        line: { color: '#7f1d1d', width: 1 }
+                    },
+                    hovertemplate: 'SELL @ %{y:.2f}<br>PnL: %{customdata:.2f}<br>%{x}<extra></extra>',
+                    customdata: sells.map(t => t.pnl),
+                };
+
+                // Trade connection lines
+                const shapes = [];
+                for (let i = 0; i < trades.length - 1; i++) {
+                    const t1 = trades[i];
+                    const t2 = trades[i + 1];
+                    if ((t1.type.includes('open') && t2.type.includes('close')) ||
+                        (t1.type === 'open_long' && t2.type === 'close_long') ||
+                        (t1.type === 'open_short' && t2.type === 'close_short')) {
+                        shapes.push({
+                            type: 'line',
+                            x0: t1.timestamp, y0: t1.price,
+                            x1: t2.timestamp, y1: t2.price,
+                            line: {
+                                color: t2.pnl >= 0 ? '#34d399' : '#f87171',
+                                width: 1,
+                                dash: 'dot'
+                            }
+                        });
+                    }
+                }
+
+                const layout = {
+                    paper_bgcolor: '#111827',
+                    plot_bgcolor: '#0a0e17',
+                    font: { color: '#9ca3af', size: 11 },
+                    xaxis: {
+                        rangeslider: { visible: true, thickness: 0.05 },
+                        gridcolor: '#1f2937',
+                        type: 'date',
+                    },
+                    yaxis: { gridcolor: '#1f2937', title: 'Price (USD)' },
+                    margin: { t: 10, r: 40, b: 40, l: 60 },
+                    legend: { orientation: 'h', y: 1.02, x: 0.5, xanchor: 'center' },
+                    shapes: shapes,
+                };
+
+                Plotly.newPlot('candlestick-chart', [candleTrace, buyTrace, sellTrace], layout, { responsive: true });
+            } catch(e) {
+                document.getElementById('candlestick-chart').innerHTML = '<div class="error-msg">No hay datos de candles.</div>';
+            }
+        }
+
+        async function loadEquity() {
+            try {
+                const data = await fetchJSON(`/api/portfolio/${currentDataset}`);
+
+                // Calcular drawdown
+                const values = data.values;
+                const peaks = [];
+                let peak = values[0];
+                for (const v of values) {
+                    peak = Math.max(peak, v);
+                    peaks.push(peak);
+                }
+                const drawdown = values.map((v, i) => ((v - peaks[i]) / peaks[i]) * 100);
+
+                const equityTrace = {
+                    x: data.timestamps.slice(0, values.length),
+                    y: values,
+                    type: 'scatter',
+                    name: 'Portfolio',
+                    line: { color: '#fbbf24', width: 2 },
+                    fill: 'tozeroy',
+                    fillcolor: 'rgba(251,191,36,0.05)',
+                };
+
+                const ddTrace = {
+                    x: data.timestamps.slice(0, values.length),
+                    y: drawdown,
+                    type: 'scatter',
+                    name: 'Drawdown %',
+                    yaxis: 'y2',
+                    line: { color: '#f87171', width: 1 },
+                    fill: 'tozeroy',
+                    fillcolor: 'rgba(248,113,113,0.1)',
+                };
+
+                const layout = {
+                    paper_bgcolor: '#111827',
+                    plot_bgcolor: '#0a0e17',
+                    font: { color: '#9ca3af', size: 11 },
+                    xaxis: { gridcolor: '#1f2937' },
+                    yaxis: { gridcolor: '#1f2937', title: 'Balance ($)', side: 'left' },
+                    yaxis2: { title: 'Drawdown %', overlaying: 'y', side: 'right', gridcolor: 'transparent' },
+                    margin: { t: 10, r: 60, b: 30, l: 60 },
+                    legend: { orientation: 'h', y: 1.05, x: 0.5, xanchor: 'center' },
+                    showlegend: true,
+                };
+
+                Plotly.newPlot('equity-chart', [equityTrace, ddTrace], layout, { responsive: true });
+            } catch(e) {
+                document.getElementById('equity-chart').innerHTML = '<div class="error-msg">No hay datos de equity.</div>';
+            }
+        }
+
+        async function loadAll() {
+            loadDatasets();
+            await Promise.all([loadMetrics(), loadCandlestick(), loadEquity()]);
+        }
+
+        loadAll();
+    </script>
+</body>
+</html>

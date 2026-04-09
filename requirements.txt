@@ -1,0 +1,11 @@
+gymnasium>=0.29.1
+stable-baselines3>=2.3.2
+pandas>=2.2.0
+numpy>=1.26.4
+pandas-ta>=0.4.71b0
+plotly>=5.18.0
+flask>=3.0.0
+flask-socketio>=5.3.6
+tensorboard>=2.15.1
+scikit-learn>=1.4.0
+python-dotenv>=1.0.0
