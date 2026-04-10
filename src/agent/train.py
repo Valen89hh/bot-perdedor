@@ -3,7 +3,7 @@ import sys
 import numpy as np
 
 from stable_baselines3 import PPO, A2C, DQN
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, CallbackList
 
@@ -76,6 +76,7 @@ def create_callbacks(config, eval_env):
         best_model_save_path=config["models_dir"],
         log_path=config["logs_dir"],
         eval_freq=config["eval_freq"],
+        n_eval_episodes=config.get("n_eval_episodes", 5),
         deterministic=True,
         render=False,
         verbose=1,
@@ -84,6 +85,7 @@ def create_callbacks(config, eval_env):
         save_freq=config["save_freq"],
         save_path=config["models_dir"],
         name_prefix="rl_trading",
+        save_total_limit=config.get("save_total_limit", 5),
     )
     trading_callback = TradingMetricsCallback(verbose=1)
 

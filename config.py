@@ -26,9 +26,11 @@ CONFIG = {
     "gae_lambda": 0.95,
     "clip_range": 0.2,
     "ent_coef": 0.02,
-    "total_timesteps": 2_000_000,
+    "total_timesteps": 300_000,
     "eval_freq": 10_000,
-    "save_freq": 50_000,
+    "n_eval_episodes": 5,
+    "save_freq": 10_000,
+    "save_total_limit": 5,
 
     # --- Network ---
     "device": "cpu",
