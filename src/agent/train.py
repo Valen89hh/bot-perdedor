@@ -85,7 +85,6 @@ def create_callbacks(config, eval_env):
         save_freq=config["save_freq"],
         save_path=config["models_dir"],
         name_prefix="rl_trading",
-        save_total_limit=config.get("save_total_limit", 5),
     )
     trading_callback = TradingMetricsCallback(verbose=1)
 

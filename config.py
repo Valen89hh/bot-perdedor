@@ -30,7 +30,6 @@ CONFIG = {
     "eval_freq": 10_000,
     "n_eval_episodes": 5,
     "save_freq": 10_000,
-    "save_total_limit": 5,
 
     # --- Network ---
     "device": "cpu",
