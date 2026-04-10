@@ -104,6 +104,10 @@ def train(config=None):
     df = load_data(config["data_path"])
     train_df, val_df, _ = split_data(df, config["train_ratio"], config["val_ratio"])
 
+    # Asegurar que existan los directorios de salida
+    os.makedirs(config["models_dir"], exist_ok=True)
+    os.makedirs(config["log_dir"], exist_ok=True)
+
     # Features
     print("[2/5] Calculando features...")
     train_feat = compute_features(train_df)
